@@ -1,11 +1,12 @@
-name: LocalToNet SSH Tüneli
+name: Run SSH Tunnel
 
 on:
   workflow_dispatch:
 
 jobs:
-  tünel:
+  ssh:
     runs-on: ubuntu-latest
+
     steps:
       - name: LocalToNet indir
         run: |
@@ -13,40 +14,36 @@ jobs:
           unzip localtonet-linux-x64.zip
           chmod +x localtonet
 
-      - name: SSH Anahtarı oluştur
+      - name: SSH Key oluştur
         run: |
-          ssh-keygen -t ed25519 -f key -N ""
-          echo "Aşağıdaki public key'i sunucuna authorized_keys'e ekle:"
-          cat key.pub
+          mkdir -p ~/.ssh
+          ssh-keygen -t rsa -f ~/.ssh/id_rsa -q -N ""
+          echo "🗝️ SSH Public Key:"
+          cat ~/.ssh/id_rsa.pub
+          echo ""
+          echo "🧑 Kullanıcı adı:"
+          whoami
 
-      - name: LocalToNet ile tünel başlat
-        id: baglan
+      - name: SSH server başlat
         run: |
-          nohup ./localtonet tcp 22 --authtoken "${{ secrets.LOCALTONET_TOKEN }}" > log.txt 2>&1 &
-          echo "Tünel açılıyor, bağlantı bekleniyor..."
-          sleep 10
-          for i in {1..20}; do
-            echo "🔁 $i. deneme: Bağlantı kontrol ediliyor..."
-            LINK=$(grep -oE "tcp://[a-zA-Z0-9\.-]+:[0-9]+" log.txt || true)
-            if [[ ! -z "$LINK" ]]; then
-              echo "🔗 Bağlantı kuruldu: $LINK"
-              echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
-              break
-            fi
-            sleep 3
-          done
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          sudo service ssh start
 
-      - name: Bağlantı bilgisini göster
-        if: steps.baglan.outputs.ssh_link != ''
+      - name: Localtonet başlat ve linki al
+        id: baglanti
         run: |
-          echo "👤 Kullanıcı adı: $(whoami)"
-          echo "📥 SSH Key indir: https://raw.githubusercontent.com/${{ github.repository }}/main/key"
-          echo "📡 SSH Bağlantı komutu:"
-          echo "ssh -i key $(whoami)@${{ steps.baglan.outputs.ssh_link#tcp:// }}"
-
-      - name: Bağlantı başarısız
-        if: steps.baglan.outputs.ssh_link == ''
-        run: |
-          echo "‼️ LocalToNet bağlantısı başarısız oldu! log.txt içeriği:"
+          ./localtonet --port 22 > log.txt 2>&1 &
+          echo "🕐 Tünel başlatılıyor..."
+          sleep 20
+          echo "📄 LOG DOSYASI:"
           cat log.txt
-          exit 1
+          LINK=$(grep -oE 'tcp://[a-zA-Z0-9./:-]+' log.txt | head -n 1)
+          echo "📡 Bağlantı linki: $LINK"
+          echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
+
+      - name: SSH komutu ve indirme bağlantısı
+        run: |
+          echo "🔗 SSH bağlantı linki: ${{ steps.baglanti.outputs.ssh_link }}"
+          echo "📥 indirme bağlantısı:"
+          echo "${{ steps.baglanti.outputs.ssh_link }}" > link.txt
