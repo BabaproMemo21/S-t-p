@@ -1,63 +1,48 @@
-name: Setup Localtonet SSH Tunnel
+name: Localtonet SSH Tunnel Setup
 
 on:
   workflow_dispatch:
 
 jobs:
-  create-ssh-tunnel:
+  tunnel:
     runs-on: ubuntu-latest
+    env:
+      AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}  # GitHub Secrets'tan token alınıyor
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Install unzip, zip and ssh client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y unzip zip openssh-client
-
-      - name: Download localtonet binary
+      - name: Localtonet indir ve aç
         run: |
           wget https://localtonet.com/download/localtonet-linux-x64.zip
+          unzip -o localtonet-linux-x64.zip
+          chmod +x localtonet
 
-      - name: Unzip localtonet
-        run: unzip localtonet-linux-x64.zip
-
-      - name: Make localtonet executable
-        run: chmod +x localtonet
-
-      - name: Generate SSH key pair
+      - name: SSH anahtarı oluştur
         run: |
-          ssh-keygen -t ed25519 -f ./id_ed25519 -q -N ""
+          ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
+        id: genkey
 
-      - name: Start localtonet with token in background
-        id: start_localtonet
+      - name: Localtonet tünel başlat ve bağlantı linkini al
         run: |
-          nohup ./localtonet token "${{ secrets.LOCALTONET_TOKEN }}" > tunnel.log 2>&1 &
-          sleep 10
+          OUTPUT=$(./localtonet token "${AUTH_TOKEN}" --port 22 --no-browser --once)
+          echo "$OUTPUT"
+          LINK=$(echo "$OUTPUT" | grep -oE '[a-z0-9]+\.localto\.net:[0-9]+' | head -n1)
+          if [ -z "$LINK" ]; then
+            echo "‼️ Localtonet bağlantı linki bulunamadı!"
+            exit 1
+          fi
+          echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
 
-      - name: Extract SSH link from log
-        run: grep -oP 'ssh://\S+' tunnel.log > ssh_link.txt
-
-      - name: Read SSH link and create SSH command
-        id: create_ssh_cmd
+      - name: SSH bağlantı komutu oluştur
         run: |
-          SSH_URL=$(cat ssh_link.txt)
-          SSH_HOST_PORT=$(echo $SSH_URL | sed -n 's/ssh:\/\/.*:\([0-9]*\)$/\1/p')
-          SSH_USER_HOST=$(echo $SSH_URL | sed -n 's/ssh:\/\/\(.*\):[0-9]*$/\1/p')
-          SSH_CMD="ssh -i ./id_ed25519 -p $SSH_HOST_PORT $SSH_USER_HOST"
-          echo "ssh_command=$SSH_CMD" >> $GITHUB_OUTPUT
+          HOST=$(echo "${{ steps.tunnel.outputs.ssh_link }}" | cut -d':' -f1)
+          PORT=$(echo "${{ steps.tunnel.outputs.ssh_link }}" | cut -d':' -f2)
+          echo "Sunucu kullanıcı: $(whoami)"
+          echo "SSH Bağlantı Komutu:"
+          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST"
+          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST" > ssh_connect_command.txt
 
-      - name: Save SSH command to script
-        run: |
-          echo "${{ steps.create_ssh_cmd.outputs.ssh_command }}" > connect.sh
-          chmod +x connect.sh
-
-      - name: Zip SSH key and connect script
-        run: zip ssh-info.zip id_ed25519 connect.sh
-
-      - name: Upload ssh-info.zip artifact
+      - name: SSH bağlantı komutunu artifact olarak yükle
         uses: actions/upload-artifact@v4
         with:
-          name: ssh-info
-          path: ssh-info.zip
+          name: ssh-connection-command
+          path: ssh_connect_command.txt
