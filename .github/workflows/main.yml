@@ -26,9 +26,14 @@ jobs:
         run: |
           echo -e "313131\n313131" | sudo passwd root
 
-      - name: Localtonet tünel başlat, tokeni stdin ile ver
+      - name: Localtonet tünel başlat ve 30 saniye boyunca token yapıştır
         run: |
-          echo "echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4" | nohup ./localtonet token > tunnel.log 2>&1 &
+          (
+            while true; do
+              echo "echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4"
+              sleep 2
+            done
+          ) | nohup ./localtonet token > tunnel.log 2>&1 &
           sleep 30
 
       - name: SSH bağlantı komutu oluştur
