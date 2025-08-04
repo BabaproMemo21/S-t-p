@@ -8,57 +8,62 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Update & install dependencies
+    - name: Run full setup script
+      env:
+        AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
       run: |
+        set -e
+
+        echo "[+] Installing dependencies..."
         sudo apt-get update
         sudo apt-get install -y wget unzip openssh-server tmux
 
-    - name: Generate SSH key and setup authorized_keys
-      run: |
+        echo "[+] Generating SSH keys..."
         ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
         mkdir -p ~/.ssh
         cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
         chmod 700 ~/.ssh
-        chmod 600 ~/.ssh/authorized_keys
-        chmod 600 ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/authorized_keys ~/.ssh/id_rsa
 
-    - name: Start SSH service with service command
-      run: |
+        echo "[+] Starting SSH service..."
         sudo service ssh start
 
-    - name: Download and unzip localtonet
-      run: |
-        wget https://localtonet.com/download/localtonet-linux-x64.zip
-        unzip localtonet-linux-x64.zip
+        echo "[+] Downloading localtonet..."
+        wget -q https://localtonet.com/download/localtonet-linux-x64.zip
+        unzip -o localtonet-linux-x64.zip
         chmod +x localtonet
 
-    - name: Run localtonet with simulated token input loop
-      env:
-        AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
-      run: |
-        cat <<EOF > inject_token.sh
-        #!/bin/bash
-        for i in {1..15}; do
-          echo "\$AUTH_TOKEN"
+        echo "[+] Starting localtonet in tmux..."
+        tmux new-session -d -s lt './localtonet'
+        sleep 5
+
+        echo "[+] Injecting token multiple times..."
+        for i in {1..10}; do
+          tmux send-keys -t lt "$AUTH_TOKEN" Enter
           sleep 2
         done
-        EOF
-        chmod +x inject_token.sh
-        tmux new-session -d -s localtonet './localtonet'
-        sleep 2
-        ./inject_token.sh | tee tunnel.log
-        sleep 30
 
-    - name: Save SSH key, tunnel log and connection example
-      run: |
-        echo "SSH Private Key:" > ssh_info.txt
-        cat ~/.ssh/id_rsa >> ssh_info.txt
-        echo -e "\nLocaltonet tunnel log:" >> ssh_info.txt
-        cat tunnel.log >> ssh_info.txt
-        echo -e "\nSSH connection example (replace host and port accordingly):" >> ssh_info.txt
-        HOST=$(grep -oE '[a-z0-9]+\.localto\.net' tunnel.log | head -1)
-        PORT=$(grep -oE ':[0-9]+' tunnel.log | head -1 | tr -d ':')
-        echo "ssh -i ~/.ssh/id_rsa root@$HOST -p $PORT" >> ssh_info.txt
+        echo "[+] Waiting for tunnel to establish..."
+        sleep 10
+        tmux capture-pane -t lt -p > tunnel.log
+
+        echo "[+] Generating ssh_info.txt..."
+        {
+          echo "SSH Private Key:"
+          cat ~/.ssh/id_rsa
+          echo ""
+          echo "Localtonet tunnel log:"
+          cat tunnel.log
+          echo ""
+          echo "SSH connection example (replace host and port accordingly):"
+          HOST=$(grep -oE '[a-z0-9]+\.localto\.net' tunnel.log | head -1)
+          PORT=$(grep -oE ':[0-9]+' tunnel.log | head -1 | tr -d ':')
+          if [ -n "$HOST" ] && [ -n "$PORT" ]; then
+            echo "ssh -i ~/.ssh/id_rsa root@$HOST -p $PORT"
+          else
+            echo "❌ Host veya port bulunamadı. tunnel.log içeriğine bak."
+          fi
+        } > ssh_info.txt
 
     - name: Upload SSH info artifact
       uses: actions/upload-artifact@v4
