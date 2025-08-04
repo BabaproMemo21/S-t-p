@@ -11,45 +11,54 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Install unzip
-        run: sudo apt-get update && sudo apt-get install -y unzip zip openssh-client
+      - name: Install unzip, zip and ssh client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip zip openssh-client
 
-      - name: Download and unzip localtonet
+      - name: Download localtonet binary
         run: |
           wget https://localtonet.com/download/localtonet-linux-x64.zip
-          unzip localtonet-linux-x64.zip
-          chmod +x localtonet-linux-x64
+
+      - name: Unzip localtonet
+        run: unzip localtonet-linux-x64.zip
+
+      - name: Make localtonet executable
+        run: chmod +x localtonet-linux-x64
 
       - name: Generate SSH key pair
         run: |
           ssh-keygen -t ed25519 -f ./id_ed25519 -q -N ""
-          cat ./id_ed25519.pub
 
-      - name: Start localtonet with token
+      - name: Start localtonet with token in background
         id: start_localtonet
         run: |
           nohup ./localtonet-linux-x64 token "${{ secrets.LOCALTONET_TOKEN }}" > tunnel.log 2>&1 &
-          sleep 5
-          grep -oP 'ssh://\S+' tunnel.log > ssh_link.txt
-          cat ssh_link.txt
+          sleep 10
 
-      - name: Extract SSH connection info
-        id: extract_ssh
+      - name: Extract SSH link from log
+        run: grep -oP 'ssh://\S+' tunnel.log > ssh_link.txt
+
+      - name: Read SSH link and create SSH command
+        id: create_ssh_cmd
         run: |
           SSH_URL=$(cat ssh_link.txt)
-          # SSH URL örn: ssh://user@subdomain.localtonet.com:port
-          # Komutu oluştur
-          SSH_CMD="ssh -i ./id_ed25519 -p $(echo $SSH_URL | sed -n 's/.*:\([0-9]*\)$/\1/p') $(echo $SSH_URL | sed -n 's/ssh:\/\/\(.*\):[0-9]*$/\1/p')"
-          echo "::set-output name=cmd::$SSH_CMD"
+          # Örnek ssh link: ssh://user@subdomain.localtonet.com:port
+          SSH_HOST_PORT=$(echo $SSH_URL | sed -n 's/ssh:\/\/.*:\([0-9]*\)$/\1/p')
+          SSH_USER_HOST=$(echo $SSH_URL | sed -n 's/ssh:\/\/\(.*\):[0-9]*$/\1/p')
+          SSH_CMD="ssh -i ./id_ed25519 -p $SSH_HOST_PORT $SSH_USER_HOST"
+          echo "ssh_command=$SSH_CMD" >> $GITHUB_OUTPUT
 
-      - name: Create ZIP with SSH key and connect command
+      - name: Save SSH command to script
         run: |
-          echo "${{ steps.extract_ssh.outputs.cmd }}" > connect.sh
+          echo "${{ steps.create_ssh_cmd.outputs.ssh_command }}" > connect.sh
           chmod +x connect.sh
-          zip ssh-info.zip id_ed25519 connect.sh
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
+      - name: Zip SSH key and connect script
+        run: zip ssh-info.zip id_ed25519 connect.sh
+
+      - name: Upload ssh-info.zip artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ssh-info
           path: ssh-info.zip
