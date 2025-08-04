@@ -57,13 +57,12 @@ jobs:
         echo -e "\nLocaltonet tunnel log:" >> ssh_info.txt
         cat tunnel.log >> ssh_info.txt
         echo -e "\nSSH connection example (replace host and port accordingly):" >> ssh_info.txt
-        # Extract host and port from tunnel.log if possible
         HOST=$(grep -oE '[a-z0-9]+\.localto\.net' tunnel.log | head -1)
         PORT=$(grep -oE ':[0-9]+' tunnel.log | head -1 | tr -d ':')
         echo "ssh -i ~/.ssh/id_rsa root@$HOST -p $PORT" >> ssh_info.txt
 
     - name: Upload SSH info artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ssh-info
         path: ssh_info.txt
