@@ -1,4 +1,4 @@
-name: Localtonet SSH Tunnel Setup (Direct Run)
+name: Localtonet SSH Tunnel Sabit Token ile
 
 on:
   workflow_dispatch:
@@ -17,15 +17,12 @@ jobs:
       - name: SSH anahtarı oluştur
         run: |
           ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
-        id: genkey
 
       - name: Localtonet tünel başlat ve link yakala
-        env:
-          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
         id: tunnel
         run: |
-          # Localtonet'i background değil direkt çalıştırıp çıktı alıyoruz
-          OUTPUT=$(./localtonet token "${AUTH_TOKEN}" --port 22 --no-browser --once 2>&1)
+          TOKEN="echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4"
+          OUTPUT=$(./localtonet token "$TOKEN" --port 22 --no-browser --once 2>&1)
           echo "$OUTPUT"
           LINK=$(echo "$OUTPUT" | grep -oE '[a-z0-9]+\.localto\.net:[0-9]+' | head -n1)
           if [ -z "$LINK" ]; then
