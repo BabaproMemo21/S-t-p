@@ -1,68 +1,59 @@
-name: LocalToNet SSH Tunnel with Key and Link
+name: LocalToNet SSH Tunnel Setup with Secret Token
 
 on:
   workflow_dispatch:
 
 jobs:
-  start-tunnel:
+  setup-tunnel:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Localtonet indir ve aç
-      run: |
-        wget https://localtonet.com/download/localtonet-linux-x64.zip
-        unzip -o localtonet-linux-x64.zip
-        chmod +x localtonet
+      - name: Localtonet indir ve aç
+        run: |
+          wget https://localtonet.com/download/localtonet-linux-x64.zip
+          unzip -o localtonet-linux-x64.zip
+          chmod +x localtonet
 
-    - name: SSH anahtarı oluştur
-      run: |
-        ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
-        echo "SSH Public Key (Bunu sunucuna authorized_keys olarak ekle):"
-        cat ./id_rsa.pub
-      id: sshkey
+      - name: SSH anahtarı oluştur
+        run: |
+          ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
+          echo "SSH Public Key:"
+          cat ./id_rsa.pub
+        id: genkey
 
-    - name: Localtonet tüneli başlat
-      run: |
-        nohup ./localtonet token ${{ secrets.AUTH_TOKEN }} > log.txt 2>&1 &
-        sleep 20
-        echo "Tünel logu:"
-        cat log.txt
+      - name: Localtonet tünel başlat
+        run: |
+          nohup ./localtonet token ${{ secrets.AUTH_TOKEN }} > tunnel.log 2>&1 &
+          sleep 20
+          echo "Tünel logu:"
+          cat tunnel.log
 
-    - name: Bağlantı linkini ve portu al
-      id: link
-      run: |
-        LINK=$(grep -oE 'tcp://[a-zA-Z0-9.-]+:[0-9]+' log.txt | head -n1)
-        if [ -z "$LINK" ]; then
-          echo "‼️ Localtonet bağlantı linki bulunamadı!"
-          exit 1
-        fi
-        echo "Link bulundu: $LINK"
-        echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
+      - name: Localtonet bağlantı linkini yakala
+        id: get_link
+        run: |
+          LINK=$(grep -oE 'tcp://[a-zA-Z0-9.-]+:[0-9]+' tunnel.log | head -n1)
+          if [ -z "$LINK" ]; then
+            echo "‼️ Bağlantı linki bulunamadı!"
+            exit 1
+          fi
+          echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
 
-    - name: SSH komutu oluştur ve whoami yazdır
-      run: |
-        HOST=$(echo "${{ steps.link.outputs.ssh_link }}" | cut -d':' -f1 | sed 's|tcp://||')
-        PORT=$(echo "${{ steps.link.outputs.ssh_link }}" | cut -d':' -f2)
-        echo "Sunucuda çalışan kullanıcı: $(whoami)"
-        echo ""
-        echo "SSH ile bağlanmak için komut:"
-        echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST"
-      id: sshinfo
+      - name: SSH bağlantı komutunu ve key linkini oluştur
+        run: |
+          HOST=$(echo "${{ steps.get_link.outputs.ssh_link }}" | sed -E 's|tcp://([^:]+):.*|\1|')
+          PORT=$(echo "${{ steps.get_link.outputs.ssh_link }}" | sed -E 's|tcp://[^:]+:([0-9]+)|\1|')
+          echo "SSH Public Key Raw Link (GitHub üzerinde):"
+          echo "https://raw.githubusercontent.com/${{ github.repository }}/main/id_rsa.pub"
+          echo ""
+          echo "SSH Bağlantı Komutu:"
+          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST"
+          echo ""
+          echo "Sunucuda çalışan kullanıcı: $(whoami)" > ssh_info.txt
+          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST" >> ssh_info.txt
+          echo "Public Key Link: https://raw.githubusercontent.com/${{ github.repository }}/main/id_rsa.pub" >> ssh_info.txt
 
-    - name: SSH info dosyasını oluştur
-      run: |
-        HOST=$(echo "${{ steps.link.outputs.ssh_link }}" | cut -d':' -f1 | sed 's|tcp://||')
-        PORT=$(echo "${{ steps.link.outputs.ssh_link }}" | cut -d':' -f2)
-        echo "SSH Public Key Linki (Raw):"
-        echo "https://raw.githubusercontent.com/${{ github.repository }}/main/id_rsa.pub"
-        echo ""
-        echo "SSH Bağlantı Komutu:"
-        echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST" > ssh_connect.txt
-        echo ""
-        echo "Sunucuda çalışan kullanıcı: $(whoami)" >> ssh_connect.txt
-
-    - name: SSH info dosyasını yükle
-      uses: actions/upload-artifact@v3
-      with:
-        name: ssh-info
-        path: ssh_connect.txt
+      - name: SSH bilgi dosyasını artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh-info
+          path: ssh_info.txt
