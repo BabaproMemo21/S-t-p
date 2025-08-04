@@ -1,14 +1,14 @@
-name: Full Auto Localtonet SSH Tunnel
+name: Localtonet SSH Tunnel Setup
 
 on:
   workflow_dispatch:
 
 jobs:
-  tunnel:
+  setup-tunnel:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Update and install required packages
+    - name: Update & install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y wget unzip openssh-server expect
@@ -26,31 +26,33 @@ jobs:
       run: |
         sudo service ssh start
 
-    - name: Download and unzip Localtonet binary
+    - name: Download and unzip localtonet
       run: |
         wget https://localtonet.com/download/localtonet-linux-x64.zip
         unzip localtonet-linux-x64.zip
         chmod +x localtonet
 
-    - name: Start Localtonet tunnel with expect for token input
+    - name: Run localtonet token with expect (handles 2 token prompts)
       env:
         AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
       run: |
-        cat << 'EOF' > localtonet_expect.sh
+        cat <<'EOF' > run_localtonet_expect.sh
         #!/usr/bin/expect -f
         set timeout 60
         spawn ./localtonet token
         expect "Please Enter AuthToken"
         send "$env(AUTH_TOKEN)\r"
+        expect "Please Enter AuthToken"
+        send "$env(AUTH_TOKEN)\r"
         expect eof
         EOF
-        chmod +x localtonet_expect.sh
-        ./localtonet_expect.sh > tunnel.log 2>&1 &
+        chmod +x run_localtonet_expect.sh
+        ./run_localtonet_expect.sh > tunnel.log 2>&1 &
 
     - name: Wait 30 seconds for tunnel to establish
       run: sleep 30
 
-    - name: Save SSH private key and connection info to file
+    - name: Save SSH key, tunnel log and connection example
       run: |
         echo "SSH Private Key:" > ssh_info.txt
         cat ~/.ssh/id_rsa >> ssh_info.txt
