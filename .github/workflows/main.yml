@@ -1,49 +1,32 @@
-name: Run SSH Tunnel
+name: SSH Bağlantısı
 
 on:
   workflow_dispatch:
 
 jobs:
-  ssh:
+  ssh-baglantisi:
     runs-on: ubuntu-latest
-
     steps:
-      - name: LocalToNet indir
+      - name: localtonet indir
         run: |
           wget https://localtonet.com/download/localtonet-linux-x64.zip
           unzip localtonet-linux-x64.zip
-          chmod +x localtonet
+          chmod +x ./localtonet
 
-      - name: SSH Key oluştur
+      - name: SSH Tünel Aç
         run: |
-          mkdir -p ~/.ssh
-          ssh-keygen -t rsa -f ~/.ssh/id_rsa -q -N ""
-          echo "🗝️ SSH Public Key:"
-          cat ~/.ssh/id_rsa.pub
-          echo ""
-          echo "🧑 Kullanıcı adı:"
-          whoami
+          nohup ./localtonet token ${{ secrets.AUTH_TOKEN }} > output.log 2>&1 &
+          sleep 15
+          cat output.log | tee debug.log
 
-      - name: SSH server başlat
+      - name: Kullanıcıyı Yazdır ve Bağlantıyı Kur
+        id: sshhazirlik
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openssh-server
-          sudo service ssh start
+          echo "Kullanıcı: $(whoami)" > ssh.txt
+          echo "Bağlantı: ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $(whoami)@z4hzlp5rk.localto.net" >> ssh.txt
 
-      - name: Localtonet başlat ve linki al
-        id: baglanti
-        run: |
-          ./localtonet --port 22 > log.txt 2>&1 &
-          echo "🕐 Tünel başlatılıyor..."
-          sleep 20
-          echo "📄 LOG DOSYASI:"
-          cat log.txt
-          LINK=$(grep -oE 'tcp://[a-zA-Z0-9./:-]+' log.txt | head -n 1)
-          echo "📡 Bağlantı linki: $LINK"
-          echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
-
-      - name: SSH komutu ve indirme bağlantısı
-        run: |
-          echo "🔗 SSH bağlantı linki: ${{ steps.baglanti.outputs.ssh_link }}"
-          echo "📥 indirme bağlantısı:"
-          echo "${{ steps.baglanti.outputs.ssh_link }}" > link.txt
+      - name: SSH Bilgisi Paylaş
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssh_bilgisi
+          path: ssh.txt
