@@ -23,8 +23,10 @@ jobs:
       - name: Unzip localtonet
         run: unzip localtonet-linux-x64.zip
 
-      - name: Make localtonet executable
-        run: chmod +x localtonet-linux-x64
+      - name: Rename localtonet binary and make executable
+        run: |
+          mv localtonet-linux-x64 localtonet
+          chmod +x localtonet
 
       - name: Generate SSH key pair
         run: |
@@ -33,7 +35,7 @@ jobs:
       - name: Start localtonet with token in background
         id: start_localtonet
         run: |
-          nohup ./localtonet-linux-x64 token "${{ secrets.LOCALTONET_TOKEN }}" > tunnel.log 2>&1 &
+          nohup ./localtonet token "${{ secrets.LOCALTONET_TOKEN }}" > tunnel.log 2>&1 &
           sleep 10
 
       - name: Extract SSH link from log
@@ -43,7 +45,6 @@ jobs:
         id: create_ssh_cmd
         run: |
           SSH_URL=$(cat ssh_link.txt)
-          # Örnek ssh link: ssh://user@subdomain.localtonet.com:port
           SSH_HOST_PORT=$(echo $SSH_URL | sed -n 's/ssh:\/\/.*:\([0-9]*\)$/\1/p')
           SSH_USER_HOST=$(echo $SSH_URL | sed -n 's/ssh:\/\/\(.*\):[0-9]*$/\1/p')
           SSH_CMD="ssh -i ./id_ed25519 -p $SSH_HOST_PORT $SSH_USER_HOST"
