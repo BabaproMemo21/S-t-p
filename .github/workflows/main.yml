@@ -1,4 +1,4 @@
-name: Start Localtonet SSH Tunnel
+name: Full Auto Localtonet SSH Tunnel
 
 on:
   workflow_dispatch:
@@ -8,44 +8,62 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Update and install packages
+    - name: Update and install required packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget openssh-server
+        sudo apt-get install -y wget unzip openssh-server expect
 
-    - name: Generate SSH key
+    - name: Generate SSH key and setup authorized_keys
       run: |
-        ssh-keygen -t rsa -b 2048 -f ./ws -N ""
-        cat ./ws.pub >> ~/.ssh/authorized_keys
-        chmod 600 ./ws
+        ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+        mkdir -p ~/.ssh
+        cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
         chmod 700 ~/.ssh
         chmod 600 ~/.ssh/authorized_keys
+        chmod 600 ~/.ssh/id_rsa
 
-    - name: Download and unzip localtonet
-      run: |
-        wget https://localtonet.com/download/localtonet-linux-x64.zip
-        unzip localtonet-linux-x64.zip
-
-    - name: Start SSH service
+    - name: Start SSH service with service command
       run: |
         sudo service ssh start
 
-    - name: Start localtonet tunnel
+    - name: Download and unzip Localtonet binary
       run: |
-        ./localtonet tunnel 22 > tunnel.log 2>&1 &
-        sleep 5
-        grep -i "localto.net" tunnel.log || cat tunnel.log
+        wget https://localtonet.com/download/localtonet-linux-x64.zip
+        unzip localtonet-linux-x64.zip
+        chmod +x localtonet
 
-    - name: Show private key
+    - name: Start Localtonet tunnel with expect for token input
+      env:
+        AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
       run: |
-        echo "::set-output name=key::$(cat ./ws)"
-      id: getkey
+        cat << 'EOF' > localtonet_expect.sh
+        #!/usr/bin/expect -f
+        set timeout 60
+        spawn ./localtonet token
+        expect "Please Enter AuthToken"
+        send "$env(AUTH_TOKEN)\r"
+        expect eof
+        EOF
+        chmod +x localtonet_expect.sh
+        ./localtonet_expect.sh > tunnel.log 2>&1 &
 
-    - name: Print SSH Command
+    - name: Wait 30 seconds for tunnel to establish
+      run: sleep 30
+
+    - name: Save SSH private key and connection info to file
       run: |
-        echo "Aşağıdaki anahtarı kullanarak bağlanabilirsin:"
-        echo ""
-        echo "${{ steps.getkey.outputs.key }}"
-        echo ""
-        echo "Örnek bağlanma komutu (port ve host log'dan alınır):"
-        echo "ssh -i ws root@host.localto.net -p PORT"
+        echo "SSH Private Key:" > ssh_info.txt
+        cat ~/.ssh/id_rsa >> ssh_info.txt
+        echo -e "\nLocaltonet tunnel log:" >> ssh_info.txt
+        cat tunnel.log >> ssh_info.txt
+        echo -e "\nSSH connection example (replace host and port accordingly):" >> ssh_info.txt
+        # Extract host and port from tunnel.log if possible
+        HOST=$(grep -oE '[a-z0-9]+\.localto\.net' tunnel.log | head -1)
+        PORT=$(grep -oE ':[0-9]+' tunnel.log | head -1 | tr -d ':')
+        echo "ssh -i ~/.ssh/id_rsa root@$HOST -p $PORT" >> ssh_info.txt
+
+    - name: Upload SSH info artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ssh-info
+        path: ssh_info.txt
