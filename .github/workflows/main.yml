@@ -26,32 +26,18 @@ jobs:
         run: |
           echo -e "313131\n313131" | sudo passwd root
 
-      - name: Localtonet tünel başlat
+      - name: Localtonet tünel başlat, çıktı dosyaya yazılsın
         run: |
           nohup ./localtonet token echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4 > tunnel.log 2>&1 &
           sleep 30
 
-      - name: Bağlantı linkini çıkar ve dosyaya yaz
-        id: get_link
-        run: |
-          LINK=$(grep -oE '[a-z0-9]+\.localto\.net:[0-9]+' tunnel.log | head -n1)
-          if [ -z "$LINK" ]; then
-            echo "‼️ Localtonet bağlantı linki bulunamadı!"
-            exit 1
-          fi
-          echo $LINK > ssh_link.txt
-          echo "::set-output name=link::$LINK"
-
       - name: SSH bağlantı komutu oluştur
         run: |
-          LINK=$(cat ssh_link.txt)
-          HOST=$(echo "$LINK" | cut -d':' -f1)
-          PORT=$(echo "$LINK" | cut -d':' -f2)
-          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT root@$HOST" > ssh_connect_command.txt
+          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p <PORT> root@<HOST>" > ssh_connect_command.txt
 
       - name: Dosyaları ziple
         run: |
-          zip ssh_info.zip id_rsa id_rsa.pub ssh_link.txt ssh_connect_command.txt tunnel.log
+          zip ssh_info.zip id_rsa id_rsa.pub ssh_connect_command.txt tunnel.log
 
       - name: Zip dosyasını artifact olarak yükle
         uses: actions/upload-artifact@v4
