@@ -23,10 +23,8 @@ jobs:
       - name: Unzip localtonet
         run: unzip localtonet-linux-x64.zip
 
-      - name: Rename localtonet binary and make executable
-        run: |
-          mv localtonet-linux-x64 localtonet
-          chmod +x localtonet
+      - name: Make localtonet executable
+        run: chmod +x localtonet
 
       - name: Generate SSH key pair
         run: |
