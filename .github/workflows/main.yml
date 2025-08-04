@@ -14,6 +14,9 @@ jobs:
           unzip -o localtonet-linux-x64.zip
           chmod +x localtonet
 
+      - name: Install expect
+        run: sudo apt-get update && sudo apt-get install -y expect
+
       - name: SSH anahtarı oluştur ve authorized_keys'e ekle
         run: |
           ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
@@ -26,14 +29,14 @@ jobs:
         run: |
           echo -e "313131\n313131" | sudo passwd root
 
-      - name: Localtonet tünel başlat ve 30 saniye boyunca token yapıştır
+      - name: Localtonet tünel başlat (expect ile token gir)
         run: |
-          (
-            while true; do
-              echo "echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4"
-              sleep 2
-            done
-          ) | nohup ./localtonet token > tunnel.log 2>&1 &
+          nohup expect -c '
+          spawn ./localtonet token
+          expect "AuthToken"
+          send "echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4\r"
+          expect eof
+          ' > tunnel.log 2>&1 &
           sleep 30
 
       - name: SSH bağlantı komutu oluştur
