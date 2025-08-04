@@ -1,4 +1,4 @@
-name: Localtonet SSH Tunnel Setup
+name: Localtonet SSH Tunnel Setup with Custom Secret Name
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ jobs:
   tunnel:
     runs-on: ubuntu-latest
     env:
-      AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
+      AUTH_TOKEN: ${{ secrets.MY_TOKEN }}
 
     steps:
       - name: Localtonet indir ve aç
