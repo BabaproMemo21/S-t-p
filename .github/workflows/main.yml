@@ -1,4 +1,4 @@
-name: Localtonet SSH Tunnel Setup
+name: Localtonet SSH Tunnel Setup (Direct Run)
 
 on:
   workflow_dispatch:
@@ -17,31 +17,27 @@ jobs:
       - name: SSH anahtarı oluştur
         run: |
           ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
-          cat ./id_rsa.pub
         id: genkey
 
-      - name: Localtonet tünel başlat
+      - name: Localtonet tünel başlat ve link yakala
         env:
           AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
+        id: tunnel
         run: |
-          nohup ./localtonet token "${AUTH_TOKEN}" > tunnel.log 2>&1 &
-          sleep 30
-          cat tunnel.log
-
-      - name: Bağlantı linkini yakala
-        id: get_link
-        run: |
-          LINK=$(grep -oE '[a-z0-9]+\.localto\.net:[0-9]+' tunnel.log | head -n1)
+          # Localtonet'i background değil direkt çalıştırıp çıktı alıyoruz
+          OUTPUT=$(./localtonet token "${AUTH_TOKEN}" --port 22 --no-browser --once 2>&1)
+          echo "$OUTPUT"
+          LINK=$(echo "$OUTPUT" | grep -oE '[a-z0-9]+\.localto\.net:[0-9]+' | head -n1)
           if [ -z "$LINK" ]; then
             echo "‼️ Localtonet bağlantı linki bulunamadı!"
             exit 1
           fi
           echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
 
-      - name: SSH bağlantı komutu oluştur ve göster
+      - name: SSH bağlantı komutu oluştur
         run: |
-          HOST=$(echo "${{ steps.get_link.outputs.ssh_link }}" | cut -d':' -f1)
-          PORT=$(echo "${{ steps.get_link.outputs.ssh_link }}" | cut -d':' -f2)
+          HOST=$(echo "${{ steps.tunnel.outputs.ssh_link }}" | cut -d':' -f1)
+          PORT=$(echo "${{ steps.tunnel.outputs.ssh_link }}" | cut -d':' -f2)
           echo "Sunucu kullanıcı: $(whoami)"
           echo "SSH Bağlantı Komutu:"
           echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST"
