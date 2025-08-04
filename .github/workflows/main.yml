@@ -1,54 +1,51 @@
-name: Localtonet SSH Tunnel + SSH Setup + Zip Artifact
+name: Start Localtonet SSH Tunnel
 
 on:
   workflow_dispatch:
 
 jobs:
-  setup-and-tunnel:
+  tunnel:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Localtonet indir ve aç
-        run: |
-          wget https://localtonet.com/download/localtonet-linux-x64.zip
-          unzip -o localtonet-linux-x64.zip
-          chmod +x localtonet
+    - name: Update and install packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget openssh-server
 
-      - name: Install expect
-        run: sudo apt-get update && sudo apt-get install -y expect
+    - name: Generate SSH key
+      run: |
+        ssh-keygen -t rsa -b 2048 -f ./ws -N ""
+        cat ./ws.pub >> ~/.ssh/authorized_keys
+        chmod 600 ./ws
+        chmod 700 ~/.ssh
+        chmod 600 ~/.ssh/authorized_keys
 
-      - name: SSH anahtarı oluştur ve authorized_keys'e ekle
-        run: |
-          ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
-          mkdir -p ~/.ssh
-          cat ./id_rsa.pub >> ~/.ssh/authorized_keys
-          chmod 700 ~/.ssh
-          chmod 600 ~/.ssh/authorized_keys
+    - name: Download and unzip localtonet
+      run: |
+        wget https://localtonet.com/download/localtonet-linux-x64.zip
+        unzip localtonet-linux-x64.zip
 
-      - name: root şifresini 313131 olarak ayarla
-        run: |
-          echo -e "313131\n313131" | sudo passwd root
+    - name: Start SSH service
+      run: |
+        sudo service ssh start
 
-      - name: Localtonet tünel başlat (expect ile token gir)
-        run: |
-          nohup expect -c '
-          spawn ./localtonet token
-          expect "AuthToken"
-          send "echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4\r"
-          expect eof
-          ' > tunnel.log 2>&1 &
-          sleep 30
+    - name: Start localtonet tunnel
+      run: |
+        ./localtonet tunnel 22 > tunnel.log 2>&1 &
+        sleep 5
+        grep -i "localto.net" tunnel.log || cat tunnel.log
 
-      - name: SSH bağlantı komutu oluştur
-        run: |
-          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p <PORT> root@<HOST>" > ssh_connect_command.txt
+    - name: Show private key
+      run: |
+        echo "::set-output name=key::$(cat ./ws)"
+      id: getkey
 
-      - name: Dosyaları ziple
-        run: |
-          zip ssh_info.zip id_rsa id_rsa.pub ssh_connect_command.txt tunnel.log
-
-      - name: Zip dosyasını artifact olarak yükle
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssh_info_zip
-          path: ssh_info.zip
+    - name: Print SSH Command
+      run: |
+        echo "Aşağıdaki anahtarı kullanarak bağlanabilirsin:"
+        echo ""
+        echo "${{ steps.getkey.outputs.key }}"
+        echo ""
+        echo "Örnek bağlanma komutu (port ve host log'dan alınır):"
+        echo "ssh -i ws root@host.localto.net -p PORT"
