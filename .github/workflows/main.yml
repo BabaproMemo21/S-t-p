@@ -7,9 +7,6 @@ jobs:
   setup-and-tunnel:
     runs-on: ubuntu-latest
 
-    env:
-      AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
-
     steps:
       - name: Localtonet indir ve aç
         run: |
@@ -29,11 +26,10 @@ jobs:
         run: |
           echo -e "313131\n313131" | sudo passwd root
 
-      - name: Localtonet tünel başlat ve çıktıyı kaydet
+      - name: Localtonet tünel başlat
         run: |
-          nohup ./localtonet token "${AUTH_TOKEN}" > tunnel.log 2>&1 &
+          nohup ./localtonet token echZs8VqGwWdB2SFCL65li7AN3b9Ttoj4 > tunnel.log 2>&1 &
           sleep 30
-          cat tunnel.log
 
       - name: Bağlantı linkini çıkar ve dosyaya yaz
         id: get_link
@@ -52,7 +48,6 @@ jobs:
           HOST=$(echo "$LINK" | cut -d':' -f1)
           PORT=$(echo "$LINK" | cut -d':' -f2)
           echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT root@$HOST" > ssh_connect_command.txt
-          echo "Sunucuya bağlanmak için komut: ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT root@$HOST"
 
       - name: Dosyaları ziple
         run: |
