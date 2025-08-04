@@ -1,13 +1,14 @@
-name: Localtonet SSH Tunnel Setup
+name: Localtonet SSH Tunnel + SSH Setup + Zip Artifact
 
 on:
   workflow_dispatch:
 
 jobs:
-  tunnel:
+  setup-and-tunnel:
     runs-on: ubuntu-latest
+
     env:
-      AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}  # GitHub Secrets'tan token alınıyor
+      AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
 
     steps:
       - name: Localtonet indir ve aç
@@ -16,33 +17,49 @@ jobs:
           unzip -o localtonet-linux-x64.zip
           chmod +x localtonet
 
-      - name: SSH anahtarı oluştur
+      - name: SSH anahtarı oluştur ve authorized_keys'e ekle
         run: |
           ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
-        id: genkey
+          mkdir -p ~/.ssh
+          cat ./id_rsa.pub >> ~/.ssh/authorized_keys
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/authorized_keys
 
-      - name: Localtonet tünel başlat ve bağlantı linkini al
+      - name: root şifresini 313131 olarak ayarla
         run: |
-          OUTPUT=$(./localtonet token "${AUTH_TOKEN}" --port 22 --no-browser --once)
-          echo "$OUTPUT"
-          LINK=$(echo "$OUTPUT" | grep -oE '[a-z0-9]+\.localto\.net:[0-9]+' | head -n1)
+          echo -e "313131\n313131" | sudo passwd root
+
+      - name: Localtonet tünel başlat ve çıktıyı kaydet
+        run: |
+          nohup ./localtonet token "${AUTH_TOKEN}" > tunnel.log 2>&1 &
+          sleep 30
+          cat tunnel.log
+
+      - name: Bağlantı linkini çıkar ve dosyaya yaz
+        id: get_link
+        run: |
+          LINK=$(grep -oE '[a-z0-9]+\.localto\.net:[0-9]+' tunnel.log | head -n1)
           if [ -z "$LINK" ]; then
             echo "‼️ Localtonet bağlantı linki bulunamadı!"
             exit 1
           fi
-          echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
+          echo $LINK > ssh_link.txt
+          echo "::set-output name=link::$LINK"
 
       - name: SSH bağlantı komutu oluştur
         run: |
-          HOST=$(echo "${{ steps.tunnel.outputs.ssh_link }}" | cut -d':' -f1)
-          PORT=$(echo "${{ steps.tunnel.outputs.ssh_link }}" | cut -d':' -f2)
-          echo "Sunucu kullanıcı: $(whoami)"
-          echo "SSH Bağlantı Komutu:"
-          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST"
-          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST" > ssh_connect_command.txt
+          LINK=$(cat ssh_link.txt)
+          HOST=$(echo "$LINK" | cut -d':' -f1)
+          PORT=$(echo "$LINK" | cut -d':' -f2)
+          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT root@$HOST" > ssh_connect_command.txt
+          echo "Sunucuya bağlanmak için komut: ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT root@$HOST"
 
-      - name: SSH bağlantı komutunu artifact olarak yükle
+      - name: Dosyaları ziple
+        run: |
+          zip ssh_info.zip id_rsa id_rsa.pub ssh_link.txt ssh_connect_command.txt tunnel.log
+
+      - name: Zip dosyasını artifact olarak yükle
         uses: actions/upload-artifact@v4
         with:
-          name: ssh-connection-command
-          path: ssh_connect_command.txt
+          name: ssh_info_zip
+          path: ssh_info.zip
