@@ -1,48 +1,52 @@
-name: Localtonet Tunnel
+name: Kur Otomatik SSH + LocalToNet
 
 on:
   workflow_dispatch:
 
 jobs:
-  create-tunnel:
+  ssh-ve-tunel:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Tunnel başlatılıyor...
-      shell: bash
+    - name: SSH anahtarı oluştur
       run: |
-        echo "Tünel başlatılıyor..."
+        mkdir -p ~/.ssh
+        ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -q -N ""
+        echo "🗝️ Public key:"
+        cat ~/.ssh/id_rsa.pub
 
-        # Token buraya gelsin (gizli tut!)
-        TOKEN="Senin-Localtonet-Token"
-
-        # Localtonet indir
-        wget -q https://localtonet.com/download/localtonet-linux-x64.zip
-        unzip -q localtonet-linux-x64.zip
+    - name: localtonet indir
+      run: |
+        wget -q https://localtonet.com/download/localtonet-linux-x64.zip -O lt.zip
+        unzip -o lt.zip
         chmod +x localtonet
+        echo "✅ Localtonet indirildi"
 
-        # Arka planda başlatıp loga yaz
-        ./localtonet tunnel 22 --authtoken $TOKEN > tnl.log 2>&1 &
+    - name: localtonet başlat (arka planda)
+      run: |
+        nohup ./localtonet tcp --port 22 > lt.log 2>&1 &
+        echo "⏳ Tünel kuruluyor..."
+        sleep 20
 
-        echo "Tünel logu izleniyor..."
-        
-        # Bağlantı oluşana kadar en fazla 20 saniye bekle
-        for i in {1..20}; do
-          sleep 1
-          LINK=$(grep -oE 'https://[a-zA-Z0-9.-]+.loca.lt' tnl.log || true)
-          if [[ ! -z "$LINK" ]]; then
-            echo "✅ Tünel bağlantısı bulundu!"
-            echo "Bağlantı: $LINK"
-            echo
-            echo "🔐 SSH komutu:"
-            echo 'ssh -o StrictHostKeyChecking=no -p 22 USER@'"$LINK"
-            echo
-            echo "🧑 Kullanıcı:"
-            whoami
-            exit 0
-          fi
-        done
+    - name: bağlantı linkini al
+      id: link_al
+      run: |
+        echo "🔍 Tünel log kontrol ediliyor..."
+        if grep -oE "tcp://[a-zA-Z0-9\.\-]+:\d+" lt.log > lt_link.txt; then
+          link=$(cat lt_link.txt | head -n1)
+          echo "✅ Bağlantı kuruldu: $link"
+          echo "ssh_link=$link" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Localtonet bağlantı linki bulunamadı!"
+          cat lt.log
+          exit 1
+        fi
 
-        echo "‼️ Localtonet bağlantı linki bulunamadı!"
-        echo "::error::Tünel başarısız oldu."
-        exit 1
+    - name: SSH bağlantı komutu ve indirme linki
+      run: |
+        whoami
+        echo "🔗 SSH bağlantı komutu:"
+        echo ""
+        echo "ssh -o StrictHostKeyChecking=no -i id_rsa root@${{ steps.link_al.outputs.ssh_link#tcp:// }}"
+        echo ""
+        echo "🔽 SSH private key (indirme linki):"
+        curl -F 'file=@/home/runner/.ssh/id_rsa' https://file.io | tee ssh_key_link.txt
