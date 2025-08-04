@@ -22,7 +22,7 @@ jobs:
         chmod 600 ~/.ssh/authorized_keys
         chmod 600 ~/.ssh/id_rsa
 
-    - name: Start SSH service with service command
+    - name: Start SSH service
       run: |
         sudo service ssh start
 
@@ -32,16 +32,14 @@ jobs:
         unzip localtonet-linux-x64.zip
         chmod +x localtonet
 
-    - name: Run localtonet token with expect (handles 2 token prompts)
+    - name: Run localtonet with expect (single token prompt)
       env:
         AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
       run: |
         cat <<'EOF' > run_localtonet_expect.sh
         #!/usr/bin/expect -f
         set timeout 60
-        spawn ./localtonet token
-        expect "Please Enter AuthToken"
-        send "$env(AUTH_TOKEN)\r"
+        spawn ./localtonet
         expect "Please Enter AuthToken"
         send "$env(AUTH_TOKEN)\r"
         expect eof
