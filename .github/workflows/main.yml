@@ -11,7 +11,7 @@ jobs:
     - name: Update & install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget unzip openssh-server expect
+        sudo apt-get install -y wget unzip openssh-server tmux
 
     - name: Generate SSH key and setup authorized_keys
       run: |
@@ -22,7 +22,7 @@ jobs:
         chmod 600 ~/.ssh/authorized_keys
         chmod 600 ~/.ssh/id_rsa
 
-    - name: Start SSH service
+    - name: Start SSH service with service command
       run: |
         sudo service ssh start
 
@@ -32,23 +32,22 @@ jobs:
         unzip localtonet-linux-x64.zip
         chmod +x localtonet
 
-    - name: Run localtonet with expect (single token prompt)
+    - name: Run localtonet with simulated token input loop
       env:
         AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
       run: |
-        cat <<'EOF' > run_localtonet_expect.sh
-        #!/usr/bin/expect -f
-        set timeout 60
-        spawn ./localtonet
-        expect "Please Enter AuthToken"
-        send "$env(AUTH_TOKEN)\r"
-        expect eof
+        cat <<EOF > inject_token.sh
+        #!/bin/bash
+        for i in {1..15}; do
+          echo "\$AUTH_TOKEN"
+          sleep 2
+        done
         EOF
-        chmod +x run_localtonet_expect.sh
-        ./run_localtonet_expect.sh > tunnel.log 2>&1 &
-
-    - name: Wait 30 seconds for tunnel to establish
-      run: sleep 30
+        chmod +x inject_token.sh
+        tmux new-session -d -s localtonet './localtonet'
+        sleep 2
+        ./inject_token.sh | tee tunnel.log
+        sleep 30
 
     - name: Save SSH key, tunnel log and connection example
       run: |
