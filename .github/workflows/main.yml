@@ -1,4 +1,4 @@
-name: Localtonet SSH Tunnel Setup with Custom Secret Name
+name: Localtonet SSH Tunnel Setup
 
 on:
   workflow_dispatch:
@@ -6,8 +6,6 @@ on:
 jobs:
   tunnel:
     runs-on: ubuntu-latest
-    env:
-      AUTH_TOKEN: ${{ secrets.MY_TOKEN }}
 
     steps:
       - name: Localtonet indir ve aç
@@ -16,10 +14,6 @@ jobs:
           unzip -o localtonet-linux-x64.zip
           chmod +x localtonet
 
-      - name: Token kontrol (debug)
-        run: |
-          echo "Token: '${AUTH_TOKEN}' (Gizlenmiş olacak loglarda)"
-
       - name: SSH anahtarı oluştur
         run: |
           ssh-keygen -t rsa -b 4096 -N "" -f ./id_rsa
@@ -27,6 +21,8 @@ jobs:
         id: genkey
 
       - name: Localtonet tünel başlat
+        env:
+          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
         run: |
           nohup ./localtonet token "${AUTH_TOKEN}" > tunnel.log 2>&1 &
           sleep 30
@@ -42,19 +38,17 @@ jobs:
           fi
           echo "ssh_link=$LINK" >> $GITHUB_OUTPUT
 
-      - name: SSH bağlantı komutu ve kullanıcı bilgisi oluştur
+      - name: SSH bağlantı komutu oluştur ve göster
         run: |
           HOST=$(echo "${{ steps.get_link.outputs.ssh_link }}" | cut -d':' -f1)
           PORT=$(echo "${{ steps.get_link.outputs.ssh_link }}" | cut -d':' -f2)
           echo "Sunucu kullanıcı: $(whoami)"
           echo "SSH Bağlantı Komutu:"
           echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST"
-          echo "https://raw.githubusercontent.com/${{ github.repository }}/main/id_rsa.pub" > ssh_info.txt
-          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST" >> ssh_info.txt
-          echo "Sunucu kullanıcı: $(whoami)" >> ssh_info.txt
+          echo "ssh -i id_rsa -o StrictHostKeyChecking=no -p $PORT user@$HOST" > ssh_connect_command.txt
 
-      - name: SSH bilgi dosyasını yükle
+      - name: SSH bağlantı komutunu artifact olarak yükle
         uses: actions/upload-artifact@v4
         with:
-          name: ssh-info
-          path: ssh_info.txt
+          name: ssh-connection-command
+          path: ssh_connect_command.txt
