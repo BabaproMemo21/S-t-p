@@ -1,72 +1,50 @@
-name: Localtonet SSH Tunnel Setup
+name: SSH Tunnel with Localtonet
 
 on:
   workflow_dispatch:
 
 jobs:
-  setup-tunnel:
+  ssh-setup:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Run full setup script
-      env:
-        AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
-      run: |
-        set -e
+      - name: 📦 Gereksinimleri yükle
+        run: |
+          sudo apt update
+          sudo apt install -y openssh-server wget unzip
 
-        echo "[+] Installing dependencies..."
-        sudo apt-get update
-        sudo apt-get install -y wget unzip openssh-server tmux
+      - name: 🔑 SSH anahtarı oluştur ve yetkilendir
+        run: |
+          KEYFILE="/root/.ssh/id_ed25519"
+          sudo mkdir -p /root/.ssh
+          sudo chmod 700 /root/.ssh
+          sudo ssh-keygen -t ed25519 -f "$KEYFILE" -N ""
+          sudo cat "${KEYFILE}.pub" | sudo tee -a /root/.ssh/authorized_keys
+          sudo chmod 600 /root/.ssh/authorized_keys
+          sudo chmod 600 "${KEYFILE}"
+          sudo chmod 644 "${KEYFILE}.pub"
 
-        echo "[+] Generating SSH keys..."
-        ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
-        mkdir -p ~/.ssh
-        cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
-        chmod 700 ~/.ssh
-        chmod 600 ~/.ssh/authorized_keys ~/.ssh/id_rsa
+      - name: 🚀 SSH servisini başlat
+        run: sudo service ssh start
 
-        echo "[+] Starting SSH service..."
-        sudo service ssh start
+      - name: 📤 SSH anahtarını ve IP’yi göster
+        run: |
+          echo -e "\n🔑 SSH Private Key:"
+          sudo cat /root/.ssh/id_ed25519
+          echo -e "\n📌 IP Adresiniz:"
+          curl -s ifconfig.me
+          echo -e "\n🟢 SSH servisi çalışıyor. 22. port açık olmalı."
 
-        echo "[+] Downloading localtonet..."
-        wget -q https://localtonet.com/download/localtonet-linux-x64.zip
-        unzip -o localtonet-linux-x64.zip
-        chmod +x localtonet
+      - name: 📥 Localtonet indir ve kur
+        run: |
+          cd /opt
+          sudo wget https://localtonet.com/download/localtonet-linux-x64.zip -O localtonet.zip
+          sudo unzip -o localtonet.zip
+          sudo chmod +x localtonet
 
-        echo "[+] Starting localtonet in tmux..."
-        tmux new-session -d -s lt './localtonet'
-        sleep 5
-
-        echo "[+] Injecting token multiple times..."
-        for i in {1..10}; do
-          tmux send-keys -t lt "$AUTH_TOKEN" Enter
-          sleep 2
-        done
-
-        echo "[+] Waiting for tunnel to establish..."
-        sleep 10
-        tmux capture-pane -t lt -p > tunnel.log
-
-        echo "[+] Generating ssh_info.txt..."
-        {
-          echo "SSH Private Key:"
-          cat ~/.ssh/id_rsa
-          echo ""
-          echo "Localtonet tunnel log:"
-          cat tunnel.log
-          echo ""
-          echo "SSH connection example (replace host and port accordingly):"
-          HOST=$(grep -oE '[a-z0-9]+\.localto\.net' tunnel.log | head -1)
-          PORT=$(grep -oE ':[0-9]+' tunnel.log | head -1 | tr -d ':')
-          if [ -n "$HOST" ] && [ -n "$PORT" ]; then
-            echo "ssh -i ~/.ssh/id_rsa root@$HOST -p $PORT"
-          else
-            echo "❌ Host veya port bulunamadı. tunnel.log içeriğine bak."
-          fi
-        } > ssh_info.txt
-
-    - name: Upload SSH info artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ssh-info
-        path: ssh_info.txt
+      - name: 🔐 Localtonet başlat
+        env:
+          TOKEN: ${{ secrets.LOCALTOKEN }}
+        run: |
+          echo -e "\n🚀 Localtonet başlatılıyor..."
+          sudo /opt/localtonet tunnel --token $TOKEN
